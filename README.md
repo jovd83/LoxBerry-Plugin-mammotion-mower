@@ -38,6 +38,8 @@ API access, so use at your own risk.
 
 ## Screenshots
 
+### MQTT Gateway → Loxone Virtual Inputs
+
 End-to-end proof that mower state actually arrives at the Loxone Miniserver as
 Virtual Inputs via the built-in MQTT Gateway — no manual subscription step:
 
@@ -49,12 +51,41 @@ The Gateway lists plugin-wide health (`mammotion/_status`, `_device_count`,
 *OK* — the plugin's `mqtt_subscriptions.cfg` registers `mammotion/#`
 automatically and `mqttgateway.pl` picks it up via inotify.
 
-| Plugin page section | Screenshot |
-|---|---|
-| **Account** — daemon status pill, email + password fields. Recommended pattern: a *secondary* Mammotion account with the mower *shared* to it. | [02-plugin-settings-account.png](screenshots/02-plugin-settings-account.png) |
-| **MQTT broker** — built-in LoxBerry broker auto-discovered (`localhost:1883 as loxberry`); no broker credentials to enter. | [03-plugin-settings-mqtt-broker.png](screenshots/03-plugin-settings-mqtt-broker.png) |
-| **Topic prefix + auto-register + Commands** — `mammotion/#` auto-subscribed; Loxone → mower command bridge enabled. | [04-plugin-settings-commands.png](screenshots/04-plugin-settings-commands.png) |
-| **Diagnostics** — the *App-Version fingerprint* (`0.5.47`) that v0.1.2 added to dodge Mammotion's *Account or password mismatch* rejection. | [05-plugin-settings-diagnostics.png](screenshots/05-plugin-settings-diagnostics.png) |
+### Plugin settings — Account
+
+Daemon status pill (running, PID 27690) plus the email/password form. The
+recommended pattern is a *secondary* Mammotion account with the mower
+*shared* to it, so the phone app keeps working without being logged out by
+the daemon. (Email value redacted in the screenshot.)
+
+![Plugin settings — Account section](screenshots/02-plugin-settings-account.png)
+
+### Plugin settings — MQTT broker
+
+The built-in LoxBerry broker is **auto-discovered** (`localhost:1883 as
+loxberry`) so there are no broker credentials to enter. Uncheck only to
+publish to a non-LoxBerry broker.
+
+![Plugin settings — MQTT broker section](screenshots/03-plugin-settings-mqtt-broker.png)
+
+### Plugin settings — Topic prefix, MQTT Gateway auto-register, Commands
+
+Topic prefix defaults to `mammotion`; *Auto-register topic prefix with the
+LoxBerry MQTT Gateway* is on by default — the plugin writes
+`mqtt_subscriptions.cfg` and the Gateway picks up `mammotion/#` via inotify.
+*Commands* (Loxone → mower) is on by default so Loxone can publish to
+`mammotion/<device>/set/<command>` to start, pause, dock, etc.
+
+![Plugin settings — Topic prefix and Commands sections](screenshots/04-plugin-settings-commands.png)
+
+### Plugin settings — Diagnostics
+
+The new **App-Version fingerprint** field added in v0.1.2. Default value
+`0.5.47` mimics the latest stable Mammotion-HA release, which is the
+fingerprint Mammotion's server currently accepts. Bump this if Mammotion
+later changes its allowlist (see [PyMammotion #137](https://github.com/mikey0000/PyMammotion/issues/137)).
+
+![Plugin settings — Diagnostics section](screenshots/05-plugin-settings-diagnostics.png)
 
 ## Requirements
 
