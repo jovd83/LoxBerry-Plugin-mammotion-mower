@@ -1,0 +1,22 @@
+{
+  "enabled": false,
+  "account_email": "",
+  "account_password": "",
+
+  "poll_interval_seconds": 60,
+  "command_settle_seconds": 5,
+
+  "use_loxberry_mqtt": true,
+  "mqtt_host": "localhost",
+  "mqtt_port": 1883,
+  "mqtt_username": "",
+  "mqtt_password": "",
+  "mqtt_topic_prefix": "mammotion",
+  "register_mqtt_subscription": true,
+
+  "enable_commands": true,
+  "command_topic_suffix": "set",
+
+  "ha_version_tag": "LoxBerry,0.1.0",
+  "debug": false
+}

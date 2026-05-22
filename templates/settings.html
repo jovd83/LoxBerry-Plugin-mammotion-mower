@@ -1,0 +1,311 @@
+<div class="container-fluid" style="padding-top: 10px;">
+
+  <TMPL_IF NAME="SAVED">
+    <div class="alert alert-success" role="alert">
+      <i class="fas fa-check-circle"></i>
+      Configuration saved &mdash; daemon restarted.
+    </div>
+  </TMPL_IF>
+  <TMPL_IF NAME="ERROR">
+    <div class="alert alert-danger" role="alert">
+      <i class="fas fa-exclamation-triangle"></i>
+      <TMPL_VAR NAME="ERROR" ESCAPE=HTML>
+    </div>
+  </TMPL_IF>
+
+  <!-- Header card with live status -->
+  <div class="panel panel-default">
+    <div class="panel-heading">
+      <h3 class="panel-title">
+        <TMPL_VAR NAME="TITLE" ESCAPE=HTML>
+        <small class="pull-right text-muted">v<TMPL_VAR NAME="VERSION" ESCAPE=HTML></small>
+      </h3>
+    </div>
+    <div class="panel-body">
+      <p>
+        <strong>Daemon:</strong>
+        <TMPL_IF NAME="DAEMON_RUNNING">
+          <span class="label label-success"><TMPL_VAR NAME="DAEMON_STATE" ESCAPE=HTML></span>
+        <TMPL_ELSE>
+          <TMPL_IF NAME="ENABLED">
+            <span class="label label-danger"><TMPL_VAR NAME="DAEMON_STATE" ESCAPE=HTML></span>
+          <TMPL_ELSE>
+            <span class="label label-default"><TMPL_VAR NAME="DAEMON_STATE" ESCAPE=HTML></span>
+          </TMPL_IF>
+        </TMPL_IF>
+        &nbsp;
+        <strong>Log:</strong>
+        <code><TMPL_VAR NAME="LOG_PATH" ESCAPE=HTML></code>
+        (<TMPL_VAR NAME="LOG_SIZE" ESCAPE=HTML> bytes)
+      </p>
+      <p class="text-muted" style="margin-bottom:0;">
+        <i class="fas fa-info-circle"></i>
+        This plugin uses the
+        <a href="https://github.com/mikey0000/PyMammotion" target="_blank">PyMammotion</a>
+        library to talk to the Mammotion cloud. It is recommended to use a
+        <strong>secondary Mammotion account</strong> with the mower
+        <em>shared</em> to it, so the phone app keeps working without being
+        logged out by the daemon.
+      </p>
+    </div>
+  </div>
+
+  <form method="post" action="<TMPL_VAR NAME="SELF_URL" ESCAPE=HTML>" class="form-horizontal" autocomplete="off">
+
+    <!-- Account / Mammotion cloud credentials -->
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <h3 class="panel-title"><i class="fas fa-user-shield"></i> Mammotion account</h3>
+      </div>
+      <div class="panel-body">
+
+        <div class="form-group">
+          <label for="enabled" class="col-sm-3 control-label">Enabled</label>
+          <div class="col-sm-9">
+            <label class="checkbox-inline">
+              <input type="checkbox" name="enabled" id="enabled" value="1" <TMPL_IF NAME="ENABLED">checked</TMPL_IF>>
+              Connect to Mammotion cloud and publish mower state to MQTT
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="account_email" class="col-sm-3 control-label">Account email</label>
+          <div class="col-sm-9">
+            <input type="text" class="form-control" name="account_email" id="account_email"
+                   value="<TMPL_VAR NAME="ACCOUNT_EMAIL" ESCAPE=HTML>" autocomplete="off"
+                   placeholder="secondary-account@example.com">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="account_password" class="col-sm-3 control-label">Account password</label>
+          <div class="col-sm-9">
+            <input type="password" class="form-control" name="account_password" id="account_password"
+                   placeholder="<TMPL_IF NAME="PASSWORD_SET">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull; (leave blank to keep)<TMPL_ELSE>Enter password</TMPL_IF>"
+                   autocomplete="new-password">
+            <p class="help-block">
+              Stored locally in <code>config/default.json</code> (mode 0600).
+              Leave blank to keep the existing password. Never committed to git.
+            </p>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="poll_interval_seconds" class="col-sm-3 control-label">Poll interval</label>
+          <div class="col-sm-9">
+            <div class="input-group" style="max-width: 220px;">
+              <input type="number" class="form-control" name="poll_interval_seconds" id="poll_interval_seconds"
+                     value="<TMPL_VAR NAME="POLL_INTERVAL_SECONDS" ESCAPE=HTML>" min="10" max="3600" step="5">
+              <span class="input-group-addon">seconds</span>
+            </div>
+            <p class="help-block">
+              How often the daemon snapshots cloud state into MQTT. State
+              updates from the Mammotion cloud arrive in real time and are
+              published immediately &mdash; this interval is a fallback floor.
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MQTT broker — zero-config by default -->
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <h3 class="panel-title"><i class="fas fa-paper-plane"></i> MQTT broker</h3>
+      </div>
+      <div class="panel-body">
+
+        <div class="form-group">
+          <label for="use_loxberry_mqtt" class="col-sm-3 control-label">Broker</label>
+          <div class="col-sm-9">
+            <label class="checkbox-inline">
+              <input type="checkbox" name="use_loxberry_mqtt" id="use_loxberry_mqtt" value="1"
+                     <TMPL_IF NAME="USE_LOXBERRY_MQTT">checked</TMPL_IF>>
+              Use the built-in LoxBerry MQTT broker
+              <TMPL_IF NAME="LB_MQTT_AVAILABLE">
+                <small class="text-muted">
+                  &mdash; auto-discovered:
+                  <code><TMPL_VAR NAME="LB_MQTT_HOST" ESCAPE=HTML>:<TMPL_VAR NAME="LB_MQTT_PORT" ESCAPE=HTML></code><TMPL_IF NAME="LB_MQTT_USER"> as <code><TMPL_VAR NAME="LB_MQTT_USER" ESCAPE=HTML></code></TMPL_IF>
+                </small>
+              <TMPL_ELSE>
+                <small class="text-danger">
+                  &mdash; could not auto-discover; uncheck to configure manually.
+                </small>
+              </TMPL_IF>
+            </label>
+            <p class="help-block">
+              Recommended. Broker host/port/user/pass are read from LoxBerry
+              system settings &mdash; no credentials needed here. Uncheck only
+              to publish to a different broker.
+            </p>
+          </div>
+        </div>
+
+        <fieldset id="manual_broker_fields">
+          <div class="form-group">
+            <label for="mqtt_host" class="col-sm-3 control-label">Broker host</label>
+            <div class="col-sm-9">
+              <input type="text" class="form-control" name="mqtt_host" id="mqtt_host"
+                     value="<TMPL_VAR NAME="MQTT_HOST" ESCAPE=HTML>" placeholder="localhost">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="mqtt_port" class="col-sm-3 control-label">Broker port</label>
+            <div class="col-sm-9">
+              <input type="number" class="form-control" name="mqtt_port" id="mqtt_port"
+                     value="<TMPL_VAR NAME="MQTT_PORT" ESCAPE=HTML>" min="1" max="65535"
+                     style="max-width: 150px;">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="mqtt_username" class="col-sm-3 control-label">Broker username</label>
+            <div class="col-sm-9">
+              <input type="text" class="form-control" name="mqtt_username" id="mqtt_username"
+                     value="<TMPL_VAR NAME="MQTT_USERNAME" ESCAPE=HTML>" autocomplete="off">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="mqtt_password" class="col-sm-3 control-label">Broker password</label>
+            <div class="col-sm-9">
+              <input type="password" class="form-control" name="mqtt_password" id="mqtt_password"
+                     placeholder="<TMPL_IF NAME="MQTT_PASSWORD_SET">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull; (leave blank to keep)<TMPL_ELSE>Enter password</TMPL_IF>"
+                     autocomplete="new-password">
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="form-group">
+          <label for="mqtt_topic_prefix" class="col-sm-3 control-label">Topic prefix</label>
+          <div class="col-sm-9">
+            <input type="text" class="form-control" name="mqtt_topic_prefix" id="mqtt_topic_prefix"
+                   value="<TMPL_VAR NAME="MQTT_TOPIC_PREFIX" ESCAPE=HTML>" placeholder="mammotion"
+                   style="max-width: 250px;">
+            <p class="help-block">
+              State topics:
+              <code><TMPL_VAR NAME="MQTT_TOPIC_PREFIX" ESCAPE=HTML>/&lt;device&gt;/&lt;datapoint&gt;</code>
+              &nbsp;&middot;&nbsp;
+              Health:
+              <code><TMPL_VAR NAME="MQTT_TOPIC_PREFIX" ESCAPE=HTML>/_status</code>,
+              <code>_device_count</code>,
+              <code>_last_poll_epoch</code>
+            </p>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="col-sm-offset-3 col-sm-9">
+            <label class="checkbox-inline">
+              <input type="checkbox" name="register_mqtt_subscription" id="register_mqtt_subscription" value="1"
+                     <TMPL_IF NAME="REGISTER_MQTT_SUB">checked</TMPL_IF>>
+              Auto-register topic prefix with the LoxBerry MQTT Gateway
+            </label>
+            <p class="help-block">
+              Writes <code>&lt;plugin&nbsp;config&gt;/mqtt_subscriptions.cfg</code> so
+              the built-in MQTT Gateway relays
+              <code><TMPL_VAR NAME="MQTT_TOPIC_PREFIX" ESCAPE=HTML>/#</code>
+              to the Loxone Miniserver as Virtual Inputs.
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Commands (Loxone → mower) -->
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <h3 class="panel-title"><i class="fas fa-gamepad"></i> Commands (Loxone &rarr; mower)</h3>
+      </div>
+      <div class="panel-body">
+
+        <div class="form-group">
+          <label for="enable_commands" class="col-sm-3 control-label">Enable</label>
+          <div class="col-sm-9">
+            <label class="checkbox-inline">
+              <input type="checkbox" name="enable_commands" id="enable_commands" value="1"
+                     <TMPL_IF NAME="ENABLE_COMMANDS">checked</TMPL_IF>>
+              Subscribe to command topics and forward them to the mower
+            </label>
+            <p class="help-block">
+              Loxone publishes a payload (any string &mdash; the command name
+              is in the topic) to
+              <code><TMPL_VAR NAME="MQTT_TOPIC_PREFIX" ESCAPE=HTML>/&lt;device&gt;/<TMPL_VAR NAME="COMMAND_TOPIC_SUFFIX" ESCAPE=HTML>/&lt;command&gt;</code>.
+              Supported commands:
+              <code>start_task</code>,
+              <code>pause</code>,
+              <code>resume</code>,
+              <code>cancel</code>,
+              <code>return_to_dock</code>,
+              <code>leave_dock</code>,
+              <code>sync_maps</code>,
+              <code>restart_mower</code>,
+              <code>move_forward</code>,
+              <code>move_back</code>,
+              <code>move_left</code>,
+              <code>move_right</code>.
+            </p>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="command_topic_suffix" class="col-sm-3 control-label">Command topic suffix</label>
+          <div class="col-sm-9">
+            <input type="text" class="form-control" name="command_topic_suffix" id="command_topic_suffix"
+                   value="<TMPL_VAR NAME="COMMAND_TOPIC_SUFFIX" ESCAPE=HTML>" placeholder="set"
+                   style="max-width: 200px;">
+            <p class="help-block">
+              The middle segment between &lt;device&gt; and &lt;command&gt;.
+              Defaults to <code>set</code>.
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Diagnostics -->
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <h3 class="panel-title"><i class="fas fa-stethoscope"></i> Diagnostics</h3>
+      </div>
+      <div class="panel-body">
+        <div class="form-group">
+          <div class="col-sm-offset-3 col-sm-9">
+            <label class="checkbox-inline">
+              <input type="checkbox" name="debug" id="debug" value="1" <TMPL_IF NAME="DEBUG">checked</TMPL_IF>>
+              Verbose debug logging
+            </label>
+            <p class="help-block">
+              Writes DEBUG-level messages to the daemon log. Useful when
+              troubleshooting a failed cloud login or a missing datapoint.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <div class="col-sm-offset-3 col-sm-9">
+        <button type="submit" name="save" value="1" class="btn btn-primary">
+          <i class="fas fa-save"></i> Save and restart daemon
+        </button>
+      </div>
+    </div>
+
+  </form>
+
+  <script>
+    // Hide manual broker fields when "Use built-in LoxBerry broker" is on.
+    (function () {
+      var cb = document.getElementById('use_loxberry_mqtt');
+      var fs = document.getElementById('manual_broker_fields');
+      if (!cb || !fs) return;
+      function sync() { fs.style.display = cb.checked ? 'none' : ''; }
+      cb.addEventListener('change', sync);
+      sync();
+    })();
+  </script>
+
+</div>

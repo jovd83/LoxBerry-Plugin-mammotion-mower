@@ -1,0 +1,2 @@
+pymammotion>=0.5.45
+paho-mqtt>=1.6

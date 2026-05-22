@@ -1,0 +1,127 @@
+#!/bin/bash
+# LoxBerry daemon wrapper for mammotion-mower.
+#
+# Invoked in two contexts:
+#   (1) no args, as root — /etc/systemd/system/loxberry.service at boot.
+#       None of LBP*DIR are exported; derive everything from a hardcoded
+#       plugin folder name + LBHOMEDIR.
+#   (2) start|stop|restart|status as the loxberry user — from the plugin's
+#       CGI ("Save and restart daemon"). `su` would fail under Apache; we
+#       fork directly when the current user already matches.
+
+set -eu
+
+PLUGINNAME="mammotion-mower"
+LBHOMEDIR="${LBHOMEDIR:-/opt/loxberry}"
+DAEMON_USER="loxberry"
+DAEMON_PATH="${LBHOMEDIR}/bin/plugins/${PLUGINNAME}/${PLUGINNAME}.py"
+LOGDIR="${LBHOMEDIR}/log/plugins/${PLUGINNAME}"
+DATADIR="${LBHOMEDIR}/data/plugins/${PLUGINNAME}"
+PIDFILE="${LOGDIR}/${PLUGINNAME}.pid"
+VENV_PYTHON="${DATADIR}/venv/bin/python3"
+SYSTEM_PYTHON="${PYTHON_BIN:-/usr/bin/python3}"
+
+if [ -x "$VENV_PYTHON" ]; then
+    PYTHON_BIN="$VENV_PYTHON"
+else
+    PYTHON_BIN="$SYSTEM_PYTHON"
+fi
+
+mkdir -p "$LOGDIR"
+chown "$DAEMON_USER:$DAEMON_USER" "$LOGDIR" 2>/dev/null || true
+
+is_running() {
+    [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null
+}
+
+start_daemon() {
+    if is_running; then
+        echo "$PLUGINNAME is already running (PID $(cat "$PIDFILE"))."
+        return 0
+    fi
+    if [ ! -f "$DAEMON_PATH" ]; then
+        echo "Daemon not found: $DAEMON_PATH" >&2
+        return 1
+    fi
+    echo "Starting $PLUGINNAME daemon..."
+
+    export LBHOMEDIR="$LBHOMEDIR"
+    export LBPBINDIR="$LBHOMEDIR/bin/plugins/$PLUGINNAME"
+    export LBPCONFIGDIR="$LBHOMEDIR/config/plugins/$PLUGINNAME"
+    export LBPDATADIR="$DATADIR"
+    export LBPLOGDIR="$LOGDIR"
+    export LBPTEMPLATEDIR="$LBHOMEDIR/templates/plugins/$PLUGINNAME"
+    export LBPHTMLAUTHDIR="$LBHOMEDIR/webfrontend/htmlauth/plugins/$PLUGINNAME"
+    export MAMMOTION_PYTHON="$PYTHON_BIN"
+
+    if [ "$(id -un)" = "$DAEMON_USER" ]; then
+        nohup "$PYTHON_BIN" "$DAEMON_PATH" >>"$LOGDIR/daemon-stderr.log" 2>&1 &
+        echo "$!" > "$PIDFILE"
+    else
+        su "$DAEMON_USER" -c "
+            export LBHOMEDIR='$LBHOMEDIR' \
+                   LBPBINDIR='$LBPBINDIR' \
+                   LBPCONFIGDIR='$LBPCONFIGDIR' \
+                   LBPDATADIR='$LBPDATADIR' \
+                   LBPLOGDIR='$LBPLOGDIR' \
+                   LBPTEMPLATEDIR='$LBPTEMPLATEDIR' \
+                   LBPHTMLAUTHDIR='$LBPHTMLAUTHDIR'
+            nohup '$PYTHON_BIN' '$DAEMON_PATH' >>'$LOGDIR/daemon-stderr.log' 2>&1 &
+            echo \$! > '$PIDFILE'
+        "
+    fi
+
+    # Verify the daemon stayed up. If it exited immediately (missing config,
+    # missing pymammotion, …), drop the stale pidfile so the next `status`
+    # call reports honestly rather than "stale pidfile" forever.
+    sleep 1
+    if is_running; then
+        echo "Started (PID $(cat "$PIDFILE"))."
+    else
+        rm -f "$PIDFILE"
+        echo "Daemon exited immediately; check $LOGDIR/${PLUGINNAME}.log and $LOGDIR/daemon-stderr.log" >&2
+        return 1
+    fi
+}
+
+stop_daemon() {
+    if [ ! -f "$PIDFILE" ]; then
+        echo "$PLUGINNAME is not running."
+        return 0
+    fi
+    PID="$(cat "$PIDFILE" 2>/dev/null || true)"
+    if [ -n "${PID:-}" ] && kill -0 "$PID" 2>/dev/null; then
+        echo "Stopping $PLUGINNAME daemon (PID $PID)..."
+        kill "$PID" 2>/dev/null || true
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            if ! kill -0 "$PID" 2>/dev/null; then
+                rm -f "$PIDFILE"
+                return 0
+            fi
+            sleep 1
+        done
+        echo "$PLUGINNAME did not stop within 10 seconds; sending SIGKILL." >&2
+        kill -9 "$PID" 2>/dev/null || true
+    fi
+    rm -f "$PIDFILE"
+}
+
+case "${1:-start}" in
+    start)   start_daemon ;;
+    stop)    stop_daemon ;;
+    restart) stop_daemon || true; start_daemon ;;
+    status)
+        if is_running; then
+            echo "$PLUGINNAME is running (PID $(cat "$PIDFILE"))."
+        else
+            echo "$PLUGINNAME is not running."
+            exit 1
+        fi
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}" >&2
+        exit 1
+        ;;
+esac
+
+exit 0
