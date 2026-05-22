@@ -9,7 +9,7 @@ back to its dock.
 
 ![LoxBerry](https://img.shields.io/badge/LoxBerry-3.0%2B-green)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
-![Version](https://img.shields.io/badge/version-0.1.0-orange)
+![Version](https://img.shields.io/badge/version-0.1.2-orange)
 
 ## What it does
 
@@ -23,6 +23,12 @@ back to its dock.
 - **Zero-config MQTT** — uses the built-in LoxBerry MQTT broker (auto-
   discovered from `general.json`) and auto-registers the topic prefix with the
   built-in MQTT Gateway. No manual subscription step.
+- **Actionable failure reporting** — the plugin page shows a live *Daemon*
+  status pill plus a *Last failure* banner that surfaces the most recent
+  `ERROR` line from the daemon log inline, so you can see why the daemon
+  stopped without SSH-ing into the LoxBerry. The same information is mirrored
+  on MQTT as `mammotion/_status` (`online` / `offline` / `error` /
+  `auth_failed`) and `mammotion/_last_error`.
 
 The plugin uses [PyMammotion](https://github.com/mikey0000/PyMammotion) — the
 same library that powers the
@@ -53,7 +59,7 @@ API access, so use at your own risk.
 
 ## Installation
 
-1. Download `mammotion-mower-0.1.0.zip` from
+1. Download `mammotion-mower-0.1.2.zip` from
    [GitHub Releases](https://github.com/jovd83/LoxBerry-Plugin-mammotion-mower/releases).
 2. Open the LoxBerry web UI → *Plugin Install*.
 3. Upload the ZIP and confirm with the SecurePIN.
@@ -83,6 +89,7 @@ credentials are missing, so the plugin never logs noisy errors during install.
 | Auto-register Gateway sub | Write `mqtt_subscriptions.cfg` so Gateway picks up `<prefix>/#` | on |
 | Enable commands | Subscribe to `<prefix>/<device>/set/<command>` | on |
 | Command topic suffix | Middle segment of command topics | `set` |
+| App-Version fingerprint | Sent to Mammotion as `App-Version: HA,2.<value>`. Mammotion's server rejects any other format with the misleading *Account or password mismatch* error. Bump to the latest [Mammotion-HA release tag](https://github.com/mikey0000/Mammotion-HA/releases) (without the leading `v`) if Mammotion changes its allowlist. | `0.5.47` |
 | Debug | DEBUG-level daemon logging | off |
 
 ## MQTT topics published
@@ -93,7 +100,8 @@ non-`[A-Za-z0-9_.-]` characters mapped to `_`.
 
 | Topic | Unit | Notes |
 |---|---|---|
-| `mammotion/_status` | `online` / `offline` / `error` | Plugin-wide LWT |
+| `mammotion/_status` | `online` / `offline` / `error` / `auth_failed` | Plugin-wide LWT. `auth_failed` is published when Mammotion rejects the credentials or the App-Version fingerprint. |
+| `mammotion/_last_error` | string | The most recent upstream error message (truncated to 240 chars), retained. Cleared on successful login. Useful for Loxone dashboards. |
 | `mammotion/_device_count` | int | Number of mowers on the account |
 | `mammotion/_last_poll_epoch` | unix s | Last successful poll cycle |
 | `mammotion/<device>/battery_percent` | % | Main battery SOC |
@@ -171,7 +179,8 @@ Input and Virtual Output mapping examples.
 | Problem | Check |
 |---|---|
 | Daemon shows *not configured* | Tick *Enabled* and enter both email + password |
-| Daemon shows *stopped (stale pidfile)* | Check `daemon-stderr.log` — usually missing pymammotion or login rejected |
+| Daemon shows *stopped* with a *Last failure* banner | Read the banner — it shows the actual upstream error verbatim. The banner pulls the most recent `ERROR`/`CRITICAL` line from `mammotion-mower.log` and is also published as `mammotion/_last_error` on MQTT. |
+| Daemon shows *stopped (stale pidfile)* | Should be rare since v0.1.1 (the daemon cleans its own pidfile on every exit path via `atexit`). If you see it, the process was killed without running its handlers (e.g. `kill -9` or OOM). Delete `/opt/loxberry/log/plugins/mammotion-mower/mammotion-mower.pid` and click *Save and restart daemon*. |
 | `pymammotion is not installed` in the log | Re-run `postinstall.sh` or `su loxberry -c '/opt/loxberry/data/plugins/mammotion-mower/venv/bin/pip install pymammotion'` |
 | `SyntaxError: f-string: unmatched '('` in stderr | Plugin venv is using Python 3.11 instead of the bundled standalone 3.13. Run `rm -rf /opt/loxberry/data/plugins/mammotion-mower/venv /opt/loxberry/data/plugins/mammotion-mower/python-standalone` then `bash /opt/loxberry/data/system/install/mammotion-mower/postinstall.sh` to rebuild. |
 | Postinstall download fails behind a proxy | Set `https_proxy` in `/etc/environment` before installing, or manually drop a python-build-standalone tarball into `/opt/loxberry/data/plugins/mammotion-mower/python-standalone/` and extract |
