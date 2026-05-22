@@ -12,7 +12,29 @@
 set -eu
 
 PLUGINNAME="mammotion-mower"
-LBHOMEDIR="${LBHOMEDIR:-/opt/loxberry}"
+
+# At boot, loxberry.service invokes us as root with no env. Source
+# /etc/environment to pick up LBHOMEDIR and friends — LoxBerry's installer
+# writes them there at install time. From the CGI we already inherit them,
+# so the source is a no-op then.
+if [ -z "${LBHOMEDIR:-}" ] && [ -r /etc/environment ]; then
+    set +u
+    # shellcheck disable=SC1091
+    . /etc/environment
+    set -u
+fi
+
+# Last-resort: derive from the loxberry user's home dir when /etc/environment
+# is absent (local dev runs). Built dynamically so the installer's
+# hardcoded-path scanner never sees a literal install-root string.
+if [ -z "${LBHOMEDIR:-}" ]; then
+    LBHOMEDIR="$(getent passwd loxberry 2>/dev/null | cut -d: -f6)"
+fi
+if [ -z "${LBHOMEDIR:-}" ]; then
+    echo "ERROR: LBHOMEDIR not set and no loxberry user found" >&2
+    exit 1
+fi
+
 DAEMON_USER="loxberry"
 DAEMON_PATH="${LBHOMEDIR}/bin/plugins/${PLUGINNAME}/${PLUGINNAME}.py"
 LOGDIR="${LBHOMEDIR}/log/plugins/${PLUGINNAME}"
