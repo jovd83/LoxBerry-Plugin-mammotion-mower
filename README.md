@@ -37,9 +37,19 @@ API access, so use at your own risk.
 - **Recommended:** create a *secondary* Mammotion account and share the mower
   to it. The Mammotion phone app and the daemon cannot stay logged in at the
   same time on the same account — they will kick each other out.
-- Outbound internet access from LoxBerry to `*.mammotion.com` and the Aliyun
-  IoT MQTT endpoint.
-- Python 3.9 or newer (LoxBerry 3.0 ships 3.11).
+- Outbound internet access from LoxBerry to:
+  - `*.mammotion.com` and the Aliyun IoT MQTT endpoint (for the mower link)
+  - `github.com` (for the one-time Python 3.13 download — see below)
+- **Python 3.13** at install time. LoxBerry 3.x ships Python **3.11**, which
+  is too old for PyMammotion (it uses Python 3.12+ f-string syntax — PEP 701).
+  The plugin's `postinstall.sh` detects this and **downloads a standalone
+  Python 3.13** (≈30 MB) from
+  [astral-sh/python-build-standalone](https://github.com/astral-sh/python-build-standalone)
+  into `/opt/loxberry/data/plugins/mammotion-mower/python-standalone/`. No
+  system changes; the standalone interpreter is used only by this plugin's
+  venv. Supported architectures: `x86_64-linux` and `aarch64-linux`
+  (Raspberry Pi 4/5 with the **64-bit** Pi OS). 32-bit Pi OS (`armv7l`) is
+  **not supported**.
 
 ## Installation
 
@@ -47,9 +57,13 @@ API access, so use at your own risk.
    [GitHub Releases](https://github.com/jovd83/LoxBerry-Plugin-mammotion-mower/releases).
 2. Open the LoxBerry web UI → *Plugin Install*.
 3. Upload the ZIP and confirm with the SecurePIN.
-4. Wait for the install to finish — the `postinstall.sh` script creates a
-   Python virtualenv at `/opt/loxberry/data/plugins/mammotion-mower/venv` and
-   `pip install pymammotion` into it (this takes 1-3 minutes the first time).
+4. Wait for the install to finish (allow **3–6 minutes the first time**) —
+   the `postinstall.sh` script:
+   - Downloads a standalone Python 3.13 build (~30 MB) into
+     `/opt/loxberry/data/plugins/mammotion-mower/python-standalone/`,
+     because LoxBerry's system Python (3.11) is too old.
+   - Creates a venv at `/opt/loxberry/data/plugins/mammotion-mower/venv`.
+   - `pip install pymammotion paho-mqtt` into it (~50 MB of deps).
 5. Open *Plugins → Mammotion Mower*, tick **Enabled**, enter your account
    email + password, click **Save and restart daemon**.
 
@@ -159,6 +173,8 @@ Input and Virtual Output mapping examples.
 | Daemon shows *not configured* | Tick *Enabled* and enter both email + password |
 | Daemon shows *stopped (stale pidfile)* | Check `daemon-stderr.log` — usually missing pymammotion or login rejected |
 | `pymammotion is not installed` in the log | Re-run `postinstall.sh` or `su loxberry -c '/opt/loxberry/data/plugins/mammotion-mower/venv/bin/pip install pymammotion'` |
+| `SyntaxError: f-string: unmatched '('` in stderr | Plugin venv is using Python 3.11 instead of the bundled standalone 3.13. Run `rm -rf /opt/loxberry/data/plugins/mammotion-mower/venv /opt/loxberry/data/plugins/mammotion-mower/python-standalone` then `bash /opt/loxberry/data/system/install/mammotion-mower/postinstall.sh` to rebuild. |
+| Postinstall download fails behind a proxy | Set `https_proxy` in `/etc/environment` before installing, or manually drop a python-build-standalone tarball into `/opt/loxberry/data/plugins/mammotion-mower/python-standalone/` and extract |
 | Cloud login fails immediately | Wrong email/password, or the same account is logged into the phone app. Switch to a shared secondary account. |
 | MQTT topics not visible in MQTT Gateway | Confirm *Auto-register* is on. Otherwise add `mammotion/#` manually in MQTT Gateway → *Subscriptions*. |
 | No values in Loxone | MQTT Gateway → *Incoming Overview* must show the topics. Then convert each to a Virtual Input with the exact name shown. |

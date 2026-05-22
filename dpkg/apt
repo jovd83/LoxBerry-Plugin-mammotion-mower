@@ -1,9 +1,9 @@
 python3-pip
+python3-venv
 python3-paho-mqtt
 python3-aiohttp
-python3-aiomqtt
 python3-cryptography
 python3-jwt
 python3-bleak
 python3-dotenv
-python3-betterproto
+
