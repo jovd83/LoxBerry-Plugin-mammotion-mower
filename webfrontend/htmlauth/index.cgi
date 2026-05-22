@@ -16,7 +16,7 @@ use LoxBerry::System;
 use LoxBerry::Web;
 
 my $cgi      = CGI->new;
-my $version  = "0.1.0";
+my $version  = "0.1.1";
 my $cfgfile  = "$lbpconfigdir/default.json";
 my $cfgobj   = LoxBerry::JSON->new();
 my $cfg      = -f $cfgfile ? $cfgobj->open(filename => $cfgfile) : {};
@@ -92,8 +92,45 @@ if ($cgi->request_method eq "POST" && defined $cgi->param("save")) {
 # ------------------------------------------------------------ status ---
 my $daemon_state   = "unknown";
 my $daemon_running = 0;
+my $daemon_fault   = "";
 my $pidfile        = "$lbplogdir/mammotion-mower.pid";
 my $creds_missing  = !($cfg->{account_email} && $cfg->{account_password});
+my $logfile        = "$lbplogdir/mammotion-mower.log";
+my $log_size       = -f $logfile ? (-s $logfile) : 0;
+
+# Pull the last error/warning line out of the daemon log so the status
+# pill can explain *why* the daemon stopped (auth failure, network error,
+# etc.) instead of the cryptic "stopped (stale pidfile)".
+sub _last_failure_line {
+    my $path = shift;
+    return "" unless -f $path;
+    my @lines;
+    if (open(my $fh, "<", $path)) {
+        # Read tail efficiently — last ~16 KB is plenty for 50-100 lines.
+        my $sz = -s $fh;
+        if ($sz > 16384) { seek($fh, -16384, 2); <$fh>; }   # discard partial line
+        @lines = <$fh>;
+        close $fh;
+    }
+    # Prefer ERROR/CRITICAL (user-actionable). Fall back to WARNING only if
+    # no error was found AND the warning is not the routine MQTT-disconnect
+    # noise that fires on every clean shutdown.
+    my ($error_hit, $warning_hit) = ("", "");
+    for my $ln (reverse @lines) {
+        if (!$error_hit && $ln =~ /\b(ERROR|CRITICAL)\b\s+\S+\s*:\s*(.+)$/) {
+            $error_hit = $2;
+            chomp $error_hit;
+            last;
+        }
+        if (!$warning_hit && $ln =~ /\bWARNING\b\s+\S+\s*:\s*(.+)$/) {
+            my $candidate = $1;
+            chomp $candidate;
+            next if $candidate =~ /Normal disconnection|MQTT disconnected/;
+            $warning_hit = $candidate;
+        }
+    }
+    return $error_hit || $warning_hit;
+}
 
 if (-f $pidfile) {
     my $pid = do { local (@ARGV, $/) = $pidfile; <> };
@@ -103,6 +140,7 @@ if (-f $pidfile) {
         $daemon_running = 1;
     } else {
         $daemon_state = "stopped (stale pidfile)";
+        $daemon_fault = _last_failure_line($logfile);
     }
 } elsif (!$cfg->{enabled}) {
     $daemon_state = "disabled";
@@ -110,10 +148,8 @@ if (-f $pidfile) {
     $daemon_state = "not configured (enter credentials)";
 } else {
     $daemon_state = "stopped";
+    $daemon_fault = _last_failure_line($logfile);
 }
-
-my $logfile  = "$lbplogdir/mammotion-mower.log";
-my $log_size = -f $logfile ? (-s $logfile) : 0;
 
 # ---------- LoxBerry MQTT broker auto-discovery ----------
 my $lb_mqtt_host      = "";
@@ -147,6 +183,7 @@ $template->param(
     ERROR                 => $errormsg,
     DAEMON_STATE          => $daemon_state,
     DAEMON_RUNNING        => $daemon_running,
+    DAEMON_FAULT          => $daemon_fault,
     LOG_SIZE              => $log_size,
     LOG_PATH              => $logfile,
     ENABLED               => $cfg->{enabled} ? 1 : 0,

@@ -30,6 +30,7 @@ credentials after each upgrade).
 from __future__ import annotations
 
 import asyncio
+import atexit
 import json
 import logging
 import os
@@ -54,9 +55,35 @@ SYS_CFG_DIR = Path(os.environ.get("LBSCONFIG") or "/opt/loxberry/config/system")
 
 CONFIG_FILE = CONFIG_DIR / "default.json"
 LOG_FILE = LOG_DIR / f"{PLUGIN_NAME}.log"
+PID_FILE = LOG_DIR / f"{PLUGIN_NAME}.pid"
 
 for d in (CONFIG_DIR, LOG_DIR, DATA_DIR):
     d.mkdir(parents=True, exist_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Pidfile ownership
+# ---------------------------------------------------------------------------
+# The bash wrapper writes the pidfile right after fork. We register an atexit
+# cleanup so EVERY exit path — clean return, soft-exit, unhandled exception,
+# SIGTERM — removes it. Without this, a daemon that exits on its own (e.g. 6
+# failed login retries) leaves a stale pidfile and the CGI shows
+# "stopped (stale pidfile)" forever until the next manual restart.
+def _remove_pidfile_if_ours() -> None:
+    try:
+        if not PID_FILE.exists():
+            return
+        try:
+            recorded = int(PID_FILE.read_text(encoding="utf-8").strip() or "0")
+        except (OSError, ValueError):
+            return
+        if recorded == os.getpid():
+            PID_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+atexit.register(_remove_pidfile_if_ours)
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -410,6 +437,37 @@ COMMAND_MAP: dict[str, tuple[str, Any]] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Auth-error classification
+# ---------------------------------------------------------------------------
+# Mammotion returns a small set of "the user supplied bad credentials"
+# messages. Retrying these is counterproductive: every retry costs another
+# failed-login charge against the account's anti-bruteforce budget, and once
+# the threshold is crossed Mammotion locks the account for 5+ minutes and the
+# next retry pushes the cooldown out again. The daemon should detect these
+# and stop immediately with a clear log line, letting the user fix the
+# credentials in the LoxBerry UI before any further attempt.
+_PERMANENT_AUTH_PATTERNS = (
+    "account or password mismatch",
+    "password mismatch",
+    "user not exist",
+    "user does not exist",
+    "account does not exist",
+    "too many password verification errors",
+    "account is locked",
+    "captcha required",
+    "invalid credentials",
+    "invalid email",
+    "email format",
+    "wrong password",
+)
+
+
+def is_permanent_auth_failure(error: BaseException) -> bool:
+    msg = str(error).lower()
+    return any(pat in msg for pat in _PERMANENT_AUTH_PATTERNS)
+
+
 async def handle_command(
     client_pm: Any,
     device_name: str,
@@ -471,10 +529,31 @@ async def amain() -> int:
 
     mqtt_client = build_mqtt_client(cfg)
 
-    pm = MammotionClient(ha_version=cfg.get("ha_version_tag") or "LoxBerry,0.1.0")
+    pm = MammotionClient(ha_version=cfg.get("ha_version_tag") or "LoxBerry,0.1.1")
     loop = asyncio.get_running_loop()
 
     stop_event = asyncio.Event()
+
+    # PyMammotion's TokenManager runs its own background refresh. When all
+    # recovery attempts (relogin, token refresh, reconnect) are exhausted, it
+    # fires on_unrecoverable_auth_error. The HA integration treats this as a
+    # signal to start a re-auth flow; here we have no interactive way to
+    # re-prompt for credentials, so we publish auth_failed and ask the loop
+    # to stop cleanly. The user fixes credentials in the UI → daemon restart
+    # picks them up. Without this wire-up the failure happens inside an
+    # asyncio Task we never await, so it would silently terminate the loop
+    # and leave a stale pidfile (which is the exact bug 0.1.0 had).
+    async def _on_unrecoverable_auth(exc: BaseException) -> None:
+        log.error(
+            "PyMammotion reports unrecoverable auth error: %s. "
+            "Stopping cleanly. Re-enter credentials and click 'Save and restart daemon'.",
+            str(exc)[:240],
+        )
+        mqtt_client.publish(f"{prefix}/_status", "auth_failed", retain=True)
+        mqtt_client.publish(f"{prefix}/_last_error", str(exc)[:240], retain=True)
+        stop_event.set()
+
+    pm.on_unrecoverable_auth_error = _on_unrecoverable_auth
 
     def _signal_stop(signum, _frame=None):
         log.info("Received signal %s — shutting down", signum)
@@ -487,20 +566,38 @@ async def amain() -> int:
             signal.signal(sig, _signal_stop)
 
     # ----- login + device discovery, with bounded retries -----
+    # Auth errors do NOT retry — repeated wrong-password attempts will
+    # escalate Mammotion's anti-bruteforce lockout and lock out the account.
+    # Network/server errors retry with bounded exponential backoff.
     delay = 5.0
+    login_ok = False
     for attempt in range(1, 7):
         try:
             log.info("Logging in to Mammotion cloud as %s (attempt %d)", cfg["account_email"], attempt)
             await pm.login_and_initiate_cloud(cfg["account_email"], cfg["account_password"])
+            login_ok = True
             break
         except Exception as e:  # noqa: BLE001
             msg = str(e).replace(cfg["account_password"], "***")
-            log.error("Cloud login failed: %s", msg)
-            if attempt == 6 or stop_event.is_set():
-                mqtt_client.publish(f"{prefix}/_status", "error", retain=True)
+            if is_permanent_auth_failure(e):
+                log.error(
+                    "Cloud login REJECTED (permanent): %s. "
+                    "Soft-exit — fix the credentials in the LoxBerry UI and click 'Save and restart daemon'. "
+                    "Further automatic retries are disabled to avoid an account lockout.",
+                    msg,
+                )
+                mqtt_client.publish(f"{prefix}/_status", "auth_failed", retain=True)
+                mqtt_client.publish(f"{prefix}/_last_error", msg[:240], retain=True)
                 mqtt_client.loop_stop()
                 mqtt_client.disconnect()
-                return 1
+                return 0  # soft-exit so wrapper sees a clean stop, not a crash loop
+            log.error("Cloud login failed (transient): %s", msg)
+            if attempt == 6 or stop_event.is_set():
+                mqtt_client.publish(f"{prefix}/_status", "error", retain=True)
+                mqtt_client.publish(f"{prefix}/_last_error", msg[:240], retain=True)
+                mqtt_client.loop_stop()
+                mqtt_client.disconnect()
+                return 0  # soft-exit on exhausted transient retries — pidfile cleaned by atexit
             delay = min(delay * 1.7, 300.0)
             log.info("Retrying login in %.1fs", delay)
             try:
@@ -508,6 +605,12 @@ async def amain() -> int:
                 return 0
             except asyncio.TimeoutError:
                 pass
+
+    if not login_ok:
+        # Should be unreachable — every branch above handles its own exit.
+        return 0
+
+    mqtt_client.publish(f"{prefix}/_last_error", "", retain=True)
 
     devices = list(pm.device_registry.all_devices)
     log.info("Cloud login OK — %d device(s) registered", len(devices))

@@ -38,6 +38,19 @@
         <code><TMPL_VAR NAME="LOG_PATH" ESCAPE=HTML></code>
         (<TMPL_VAR NAME="LOG_SIZE" ESCAPE=HTML> bytes)
       </p>
+      <TMPL_IF NAME="DAEMON_FAULT">
+        <div class="alert alert-warning" style="margin-bottom:0;">
+          <strong><i class="fas fa-exclamation-triangle"></i> Last failure:</strong>
+          <code><TMPL_VAR NAME="DAEMON_FAULT" ESCAPE=HTML></code>
+          <p class="help-block" style="margin-bottom:0;">
+            If this looks like an account or password problem, re-enter your
+            credentials carefully (watch for trailing spaces from password
+            autofill) and click <em>Save and restart daemon</em>. Repeated
+            wrong-password attempts trigger a Mammotion account lockout for
+            ~5 minutes.
+          </p>
+        </div>
+      </TMPL_IF>
       <p class="text-muted" style="margin-bottom:0;">
         <i class="fas fa-info-circle"></i>
         This plugin uses the
