@@ -36,6 +36,26 @@ same library that powers the
 PyMammotion is unofficial; Mammotion's Terms of Service prohibit unofficial
 API access, so use at your own risk.
 
+## Screenshots
+
+End-to-end proof that mower state actually arrives at the Loxone Miniserver as
+Virtual Inputs via the built-in MQTT Gateway — no manual subscription step:
+
+![MQTT Gateway — mammotion topics flowing as Virtual Inputs](screenshots/01-mqtt-gateway-incoming-overview.png)
+
+The Gateway lists plugin-wide health (`mammotion/_status`, `_device_count`,
+`_last_poll_epoch`) and per-device datapoints (`activity_mode`, `area_m2`,
+`battery_percent`, `blade_height_mm`, `_last_update_epoch`, …). All rows are
+*OK* — the plugin's `mqtt_subscriptions.cfg` registers `mammotion/#`
+automatically and `mqttgateway.pl` picks it up via inotify.
+
+| Plugin page section | Screenshot |
+|---|---|
+| **Account** — daemon status pill, email + password fields. Recommended pattern: a *secondary* Mammotion account with the mower *shared* to it. | [02-plugin-settings-account.png](screenshots/02-plugin-settings-account.png) |
+| **MQTT broker** — built-in LoxBerry broker auto-discovered (`localhost:1883 as loxberry`); no broker credentials to enter. | [03-plugin-settings-mqtt-broker.png](screenshots/03-plugin-settings-mqtt-broker.png) |
+| **Topic prefix + auto-register + Commands** — `mammotion/#` auto-subscribed; Loxone → mower command bridge enabled. | [04-plugin-settings-commands.png](screenshots/04-plugin-settings-commands.png) |
+| **Diagnostics** — the *App-Version fingerprint* (`0.5.47`) that v0.1.2 added to dodge Mammotion's *Account or password mismatch* rejection. | [05-plugin-settings-diagnostics.png](screenshots/05-plugin-settings-diagnostics.png) |
+
 ## Requirements
 
 - LoxBerry 3.0 or newer.
