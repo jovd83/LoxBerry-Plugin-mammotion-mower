@@ -138,7 +138,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "register_mqtt_subscription": True,
     "enable_commands": True,
     "command_topic_suffix": "set",
-    "ha_version_tag": "LoxBerry,0.1.0",
+    "ha_version_tag": "0.5.47",
     "debug": False,
 }
 
@@ -529,7 +529,15 @@ async def amain() -> int:
 
     mqtt_client = build_mqtt_client(cfg)
 
-    pm = MammotionClient(ha_version=cfg.get("ha_version_tag") or "LoxBerry,0.1.1")
+    # Mammotion's server checks the App-Version header and rejects anything
+    # that doesn't look like an official Mammotion-HA build. PyMammotion
+    # formats this as f"HA,2.{ha_version}", so passing "0.5.47" produces
+    # "HA,2.0.5.47" — the fingerprint Mammotion-HA users currently send.
+    # See PyMammotion #137 / Mammotion-HA #750: any other prefix returns
+    # the misleading 'Account or password mismatch' even with valid creds.
+    ha_version = (cfg.get("ha_version_tag") or "").strip() or "0.5.47"
+    log.info("PyMammotion App-Version fingerprint: HA,2.%s", ha_version)
+    pm = MammotionClient(ha_version=ha_version)
     loop = asyncio.get_running_loop()
 
     stop_event = asyncio.Event()

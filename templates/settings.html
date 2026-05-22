@@ -284,6 +284,26 @@
         <h3 class="panel-title"><i class="fas fa-stethoscope"></i> Diagnostics</h3>
       </div>
       <div class="panel-body">
+
+        <div class="form-group">
+          <label for="ha_version_tag" class="col-sm-3 control-label">App-Version fingerprint</label>
+          <div class="col-sm-9">
+            <input type="text" class="form-control" name="ha_version_tag" id="ha_version_tag"
+                   value="<TMPL_VAR NAME="HA_VERSION_TAG" ESCAPE=HTML>"
+                   placeholder="0.5.47" style="max-width:200px;">
+            <p class="help-block">
+              Sent to Mammotion as <code>App-Version: HA,2.&lt;value&gt;</code>.
+              Mammotion's server rejects anything that doesn't look like an
+              official <em>Mammotion-HA</em> build with the misleading
+              <em>Account or password mismatch</em> message &mdash; even with
+              correct credentials. Default <code>0.5.47</code> matches the
+              latest stable Mammotion-HA release. If Mammotion later bumps
+              the accepted version, change this to the new release tag
+              (without the leading <code>v</code>).
+            </p>
+          </div>
+        </div>
+
         <div class="form-group">
           <div class="col-sm-offset-3 col-sm-9">
             <label class="checkbox-inline">
@@ -296,6 +316,7 @@
             </p>
           </div>
         </div>
+
       </div>
     </div>
 

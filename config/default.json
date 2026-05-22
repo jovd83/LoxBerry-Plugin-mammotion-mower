@@ -17,6 +17,6 @@
   "enable_commands": true,
   "command_topic_suffix": "set",
 
-  "ha_version_tag": "LoxBerry,0.1.0",
+  "ha_version_tag": "0.5.47",
   "debug": false
 }

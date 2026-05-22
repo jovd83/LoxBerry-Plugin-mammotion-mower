@@ -16,7 +16,7 @@ use LoxBerry::System;
 use LoxBerry::Web;
 
 my $cgi      = CGI->new;
-my $version  = "0.1.1";
+my $version  = "0.1.2";
 my $cfgfile  = "$lbpconfigdir/default.json";
 my $cfgobj   = LoxBerry::JSON->new();
 my $cfg      = -f $cfgfile ? $cfgobj->open(filename => $cfgfile) : {};
@@ -73,6 +73,11 @@ if ($cgi->request_method eq "POST" && defined $cgi->param("save")) {
     }
 
     $cfg->{debug} = $cgi->param("debug") ? 1 : 0;
+
+    my $ha_ver = scalar $cgi->param("ha_version_tag") // "";
+    $ha_ver =~ s/^\s+|\s+$//g;
+    $ha_ver = "0.5.47" if $ha_ver eq "";
+    $cfg->{ha_version_tag} = $ha_ver;
 
     if (eval { $cfgobj->write(); 1 }) {
         $saved = 1;
@@ -204,6 +209,7 @@ $template->param(
     ENABLE_COMMANDS       => (exists $cfg->{enable_commands} ? ($cfg->{enable_commands} ? 1 : 0) : 1),
     COMMAND_TOPIC_SUFFIX  => $cfg->{command_topic_suffix} || "set",
     DEBUG                 => $cfg->{debug} ? 1 : 0,
+    HA_VERSION_TAG        => $cfg->{ha_version_tag} || "0.5.47",
     VERSION               => $version,
     SELF_URL              => $ENV{REQUEST_URI} || "",
 );
