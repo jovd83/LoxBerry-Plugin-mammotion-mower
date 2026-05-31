@@ -4,7 +4,6 @@
   "account_password": "",
 
   "poll_interval_seconds": 60,
-  "command_settle_seconds": 5,
 
   "use_loxberry_mqtt": true,
   "mqtt_host": "localhost",

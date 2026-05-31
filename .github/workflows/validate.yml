@@ -1,0 +1,49 @@
+name: validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install tooling and runtime deps
+        run: python -m pip install --upgrade pip paho-mqtt ruff pytest
+
+      - name: Python byte-compile
+        run: python -m py_compile bin/mammotion-mower.py
+
+      - name: Ruff lint
+        run: ruff check bin/mammotion-mower.py tests/
+
+      - name: Bash syntax check
+        run: |
+          bash -n daemon/daemon
+          bash -n postinstall.sh
+
+      - name: JSON validity
+        run: python -m json.tool config/default.json > /dev/null
+
+      - name: plugin.cfg sanity
+        run: |
+          for key in VERSION NAME FOLDER TITLE; do
+            grep -qE "^${key}=" plugin.cfg || { echo "plugin.cfg missing ${key}"; exit 1; }
+          done
+
+      - name: Version consistency (plugin.cfg vs release.cfg)
+        run: |
+          pcfg="$(grep -E '^VERSION=' plugin.cfg | head -1 | cut -d= -f2)"
+          rcfg="$(grep -E '^VERSION=' release.cfg | head -1 | cut -d= -f2)"
+          echo "plugin.cfg=$pcfg release.cfg=$rcfg"
+          [ "$pcfg" = "$rcfg" ] || { echo "VERSION mismatch between plugin.cfg and release.cfg"; exit 1; }
+
+      - name: Unit tests
+        run: pytest -q

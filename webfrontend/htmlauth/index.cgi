@@ -16,7 +16,7 @@ use LoxBerry::System;
 use LoxBerry::Web;
 
 my $cgi      = CGI->new;
-my $version  = "0.1.2";
+my $version  = "1.0.1";
 my $cfgfile  = "$lbpconfigdir/default.json";
 my $cfgobj   = LoxBerry::JSON->new();
 my $cfg      = -f $cfgfile ? $cfgobj->open(filename => $cfgfile) : {};
@@ -83,9 +83,10 @@ if ($cgi->request_method eq "POST" && defined $cgi->param("save")) {
         $saved = 1;
         chmod 0600, $cfgfile;
 
-        # Restart the daemon. The installer drops the hook here; redirect
+        # Restart the daemon. Derive the path from $lbhomedir (exported by
+        # LoxBerry::System) instead of hardcoding the install root; redirect
         # subshell output to a log file or it leaks into the HTTP response.
-        my $daemon = "/opt/loxberry/system/daemons/plugins/mammotion-mower";
+        my $daemon = "$lbhomedir/system/daemons/plugins/mammotion-mower";
         if (-x $daemon) {
             system("$daemon restart >>'$lbplogdir/daemon-restart.log' 2>&1");
         }

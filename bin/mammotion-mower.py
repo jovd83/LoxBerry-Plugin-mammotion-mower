@@ -33,6 +33,7 @@ import asyncio
 import atexit
 import json
 import logging
+import math
 import os
 import re
 import signal
@@ -41,7 +42,6 @@ import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
 # ---------------------------------------------------------------------------
 # LoxBerry-provided paths (fall back to local relative dirs for dev runs)
@@ -109,15 +109,17 @@ def safe_segment(value: Any, fallback: str = "device") -> str:
     return cleaned.lower() or fallback
 
 
-def redact_url(url: str) -> str:
-    """Strip query string and userinfo so URLs are safe to log."""
-    try:
-        parts = urlsplit(url)
-        host = parts.hostname or ""
-        port = f":{parts.port}" if parts.port else ""
-        return f"{parts.scheme}://{host}{port}{parts.path}"
-    except Exception:  # noqa: BLE001
-        return "<unparseable-url>"
+def redact_secret(text: Any, *secrets: str) -> str:
+    """Replace any occurrence of *secrets* in *text* with ``***``.
+
+    Keeps account passwords out of log lines and the retained MQTT
+    ``_last_error`` topic regardless of which error path surfaced them.
+    """
+    out = str(text)
+    for secret in secrets:
+        if secret:
+            out = out.replace(secret, "***")
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +130,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "account_email": "",
     "account_password": "",
     "poll_interval_seconds": 60,
-    "command_settle_seconds": 5,
     "use_loxberry_mqtt": True,
     "mqtt_host": "localhost",
     "mqtt_port": 1883,
@@ -383,6 +384,15 @@ def extract_datapoints(device: Any) -> dict[str, Any]:
     blade_warn = _coalesce(rd, "maintenance", "blade_used_time", "blade_used_warn_time")
     if blade_warn is not None:
         out["blade_used_warn_time_s"] = int(blade_warn)
+    if _coalesce(rd, "maintenance") is not None and blade_used is None and blade_warn is None:
+        # The blade-life counters live under a nested, same-named struct
+        # (maintenance.blade_used_time.blade_used_time). If the maintenance
+        # block is present yet both resolve to None, the upstream shape may
+        # have changed — surface it under debug for diagnosis.
+        log.debug(
+            "maintenance present but blade_used_time path resolved to None "
+            "— verify PyMammotion field shape"
+        )
 
     # Vision (Luba 2 / Yuka)
     brightness = _coalesce(rd, "vision_info", "brightness")
@@ -393,7 +403,6 @@ def extract_datapoints(device: Any) -> dict[str, Any]:
         out["visual_positioning_status"] = int(vio_state)
 
     # Location (in radians on the wire → convert to degrees for Loxone)
-    import math
     lat = _coalesce(device, "location", "RTK", "latitude")
     lon = _coalesce(device, "location", "RTK", "longitude")
     if isinstance(lat, (int, float)):
@@ -552,13 +561,14 @@ async def amain() -> int:
     # asyncio Task we never await, so it would silently terminate the loop
     # and leave a stale pidfile (which is the exact bug 0.1.0 had).
     async def _on_unrecoverable_auth(exc: BaseException) -> None:
+        detail = redact_secret(exc, cfg["account_password"])[:240]
         log.error(
             "PyMammotion reports unrecoverable auth error: %s. "
             "Stopping cleanly. Re-enter credentials and click 'Save and restart daemon'.",
-            str(exc)[:240],
+            detail,
         )
         mqtt_client.publish(f"{prefix}/_status", "auth_failed", retain=True)
-        mqtt_client.publish(f"{prefix}/_last_error", str(exc)[:240], retain=True)
+        mqtt_client.publish(f"{prefix}/_last_error", detail, retain=True)
         stop_event.set()
 
     pm.on_unrecoverable_auth_error = _on_unrecoverable_auth
@@ -586,7 +596,7 @@ async def amain() -> int:
             login_ok = True
             break
         except Exception as e:  # noqa: BLE001
-            msg = str(e).replace(cfg["account_password"], "***")
+            msg = redact_secret(e, cfg["account_password"])
             if is_permanent_auth_failure(e):
                 log.error(
                     "Cloud login REJECTED (permanent): %s. "

@@ -9,7 +9,7 @@ back to its dock.
 
 ![LoxBerry](https://img.shields.io/badge/LoxBerry-3.0%2B-green)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
-![Version](https://img.shields.io/badge/version-0.1.2-orange)
+![Version](https://img.shields.io/badge/version-1.0.1-orange)
 
 ## What it does
 
@@ -110,7 +110,7 @@ later changes its allowlist (see [PyMammotion #137](https://github.com/mikey0000
 
 ## Installation
 
-1. Download `mammotion-mower-0.1.2.zip` from
+1. Download `mammotion-mower-1.0.1.zip` from
    [GitHub Releases](https://github.com/jovd83/LoxBerry-Plugin-mammotion-mower/releases).
 2. Open the LoxBerry web UI → *Plugin Install*.
 3. Upload the ZIP and confirm with the SecurePIN.
